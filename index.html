@@ -169,15 +169,17 @@
         const camera = cameraTraseira || cameras[cameras.length - 1];
 
       
+
 await leitor.start(
   camera.id,
   {
-    fps: 15,
- qrbox: {
-  width: 400,
-  height: 200,
-  type: "barCode"
-}
+    fps: 20,
+    qrbox: {
+      width: 400,
+      height: 200
+    },
+    aspectRatio: 1.5,
+    disableFlip: false
   },
   codigo => {
     if (codigoEncontrado) return;
@@ -196,7 +198,6 @@ await leitor.start(
   },
   () => {}
 );
-
 
         lendo = true;
 
