@@ -1,0 +1,242 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leitor de Patrimônio</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px 16px;
+      font-family: Arial, sans-serif;
+      background: #f3f4f6;
+      color: #222;
+    }
+
+    .container {
+      max-width: 520px;
+      margin: 20px auto;
+      padding: 24px;
+      background: white;
+      border-radius: 14px;
+      box-shadow: 0 4px 18px #00000012;
+    }
+
+    h2 {
+      text-align: center;
+      margin-top: 0;
+    }
+
+    p {
+      text-align: center;
+      color: #666;
+      line-height: 1.5;
+    }
+
+    #reader {
+      width: 100%;
+      margin: 20px auto;
+    }
+
+    button {
+      width: 100%;
+      padding: 15px;
+      margin-top: 10px;
+      border: none;
+      border-radius: 8px;
+      background: #b5121b;
+      color: white;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      background: #999;
+      cursor: not-allowed;
+    }
+
+    .secundario {
+      background: #333;
+    }
+
+    #resultado {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 8px;
+      background: #f1f1f1;
+      text-align: center;
+      overflow-wrap: anywhere;
+    }
+
+    #codigoLido {
+      display: block;
+      margin-top: 10px;
+      font-size: 22px;
+      font-weight: bold;
+      color: #b5121b;
+    }
+
+    #mensagem {
+      margin-top: 15px;
+      text-align: center;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="container">
+    <h2>Leitor de Patrimônio</h2>
+
+    <p>
+      Posicione a câmera sobre o código de barras
+      do equipamento.
+    </p>
+
+    <div id="reader"></div>
+
+    <button id="btnIniciar" onclick="iniciarCamera()">
+      ABRIR CÂMERA
+    </button>
+
+    <button id="btnParar" class="secundario"
+      onclick="pararCamera()" disabled>
+      PARAR CÂMERA
+    </button>
+
+    <div id="resultado" style="display:none">
+      Patrimônio identificado:
+      <span id="codigoLido"></span>
+    </div>
+
+    <div id="mensagem">
+      Aguardando início da leitura.
+    </div>
+
+    <button id="btnVoltar" class="secundario"
+      onclick="voltarSistema()" style="display:none">
+      VOLTAR AO INVENTÁRIO
+    </button>
+  </div>
+
+  <script>
+    let leitor = null;
+    let lendo = false;
+    let codigoEncontrado = false;
+
+    async function iniciarCamera() {
+      const mensagem = document.getElementById('mensagem');
+
+      if (!window.Html5Qrcode) {
+        mensagem.textContent =
+          'Não foi possível carregar o leitor. Verifique sua conexão.';
+        return;
+      }
+
+      try {
+        mensagem.textContent = 'Solicitando acesso à câmera...';
+
+        leitor = new Html5Qrcode('reader');
+
+        const cameras = await Html5Qrcode.getCameras();
+
+        if (!cameras || cameras.length === 0) {
+          throw new Error('Nenhuma câmera foi encontrada.');
+        }
+
+        const cameraTraseira = cameras.find(camera =>
+          /back|rear|environment|traseira|externa/i.test(camera.label)
+        );
+
+        const camera = cameraTraseira || cameras[cameras.length - 1];
+
+        await leitor.start(
+          camera.id,
+          {
+            fps: 10,
+            qrbox: {
+              width: 300,
+              height: 120
+            }
+          },
+          codigo => {
+            if (codigoEncontrado) return;
+
+            codigoEncontrado = true;
+
+            document.getElementById('codigoLido').textContent = codigo;
+            document.getElementById('resultado').style.display = 'block';
+            document.getElementById('mensagem').textContent =
+              'Código identificado com sucesso!';
+
+            document.getElementById('btnVoltar').style.display = 'block';
+
+            enviarCodigo(codigo);
+            pararCamera();
+          },
+          () => {}
+        );
+
+        lendo = true;
+
+        document.getElementById('btnIniciar').disabled = true;
+        document.getElementById('btnParar').disabled = false;
+
+        mensagem.textContent = 'Câmera ativa. Aponte para o código.';
+
+      } catch (erro) {
+        mensagem.textContent =
+          'Não foi possível iniciar a câmera: ' + erro.message;
+
+        console.error(erro);
+      }
+    }
+
+    async function pararCamera() {
+      if (leitor && lendo) {
+        try {
+          await leitor.stop();
+          leitor.clear();
+        } catch (erro) {
+          console.log(erro);
+        }
+      }
+
+      lendo = false;
+
+      document.getElementById('btnIniciar').disabled = false;
+      document.getElementById('btnParar').disabled = true;
+    }
+
+    function enviarCodigo(codigo) {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({
+          tipo: 'PATRIMONIO_LIDO',
+          codigo: codigo
+        }, '*');
+      } else {
+        document.getElementById('mensagem').textContent =
+          'Código lido. Abra o leitor pelo sistema de inventário para enviar automaticamente.';
+      }
+    }
+
+    function voltarSistema() {
+      if (window.opener && !window.opener.closed) {
+        window.close();
+      } else {
+        document.getElementById('mensagem').textContent =
+          'Você pode fechar esta aba e retornar ao inventário.';
+      }
+    }
+  </script>
+
+</body>
+</html>
