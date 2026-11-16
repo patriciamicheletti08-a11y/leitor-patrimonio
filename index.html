@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Leitor de Patrimônio</title>
 
-  <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
 
   <style>
     * { box-sizing: border-box; }
@@ -101,7 +101,15 @@
       do equipamento.
     </p>
 
-    <div id="reader"></div>
+   <div id="reader">
+  <video
+    id="video"
+    autoplay
+    muted
+    playsinline
+    style="width:100%; max-height:360px; object-fit:contain;">
+  </video>
+</div>
 
     <button id="btnIniciar" onclick="iniciarCamera()">
       ABRIR CÂMERA
@@ -128,128 +136,112 @@
   </div>
 
   <script>
-    let leitor = null;
-    let lendo = false;
-    let codigoEncontrado = false;
+    
+let leitor = null;
+let lendo = false;
+let codigoEncontrado = false;
 
-    async function iniciarCamera() {
-      const mensagem = document.getElementById('mensagem');
+async function iniciarCamera() {
+  const mensagem = document.getElementById('mensagem');
+  const video = document.getElementById('video');
 
-      if (!window.Html5Qrcode) {
-        mensagem.textContent =
-          'Não foi possível carregar o leitor. Verifique sua conexão.';
-        return;
-      }
+  if (!window.ZXing) {
+    mensagem.textContent = 'Não foi possível carregar a biblioteca ZXing.';
+    return;
+  }
 
-      try {
-        mensagem.textContent = 'Solicitando acesso à câmera...';
+  try {
+    mensagem.textContent = 'Iniciando câmera...';
+    codigoEncontrado = false;
 
-        leitor = new Html5Qrcode('reader', {
-  formatsToSupport: [
-    Html5QrcodeSupportedFormats.CODE_128,
-    Html5QrcodeSupportedFormats.CODE_39,
-    Html5QrcodeSupportedFormats.EAN_13,
-    Html5QrcodeSupportedFormats.EAN_8,
-    Html5QrcodeSupportedFormats.UPC_A,
-    Html5QrcodeSupportedFormats.UPC_E,
-    Html5QrcodeSupportedFormats.ITF
-  ]
-});
+    leitor = new ZXing.BrowserMultiFormatReader();
 
-        const cameras = await Html5Qrcode.getCameras();
+    const cameras = await leitor.listVideoInputDevices();
 
-        if (!cameras || cameras.length === 0) {
-          throw new Error('Nenhuma câmera foi encontrada.');
+    if (!cameras || cameras.length === 0) {
+      throw new Error('Nenhuma câmera encontrada.');
+    }
+
+    const cameraTraseira = cameras.find(camera =>
+      /back|rear|environment|traseira/i.test(camera.label)
+    );
+
+    const camera = cameraTraseira || cameras[0];
+
+    leitor.decodeFromVideoDevice(
+      camera.deviceId,
+      video,
+      (resultado, erro) => {
+        if (resultado && !codigoEncontrado) {
+          codigoEncontrado = true;
+
+          const codigo = resultado.getText();
+
+          document.getElementById('codigoLido').textContent = codigo;
+          document.getElementById('resultado').style.display = 'block';
+          mensagem.textContent = 'Código identificado com sucesso!';
+
+          document.getElementById('btnVoltar').style.display = 'block';
+
+          enviarCodigo(codigo);
+          pararCamera();
         }
+      }
+    );
 
-        const cameraTraseira = cameras.find(camera =>
-          /back|rear|environment|traseira|externa/i.test(camera.label)
-        );
+    lendo = true;
 
-        const camera = cameraTraseira || cameras[cameras.length - 1];
+    document.getElementById('btnIniciar').disabled = true;
+    document.getElementById('btnParar').disabled = false;
 
-      
+    mensagem.textContent = 'Câmera ativa. Aponte para o código de barras.';
 
-await leitor.start(
-  camera.id,
-  {
-    fps: 20,
-    qrbox: {
-      width: 400,
-      height: 200
-    },
-    aspectRatio: 1.5,
-    disableFlip: false
-  },
-  codigo => {
-    if (codigoEncontrado) return;
+  } catch (erro) {
+    mensagem.textContent = 'Erro ao iniciar câmera: ' + erro.message;
+    console.error(erro);
+  }
+}
 
-    codigoEncontrado = true;
+async function pararCamera() {
+  if (leitor && lendo) {
+    try {
+      await leitor.reset();
+    } catch (erro) {
+      console.log(erro);
+    }
+  }
 
-    document.getElementById('codigoLido').textContent = codigo;
-    document.getElementById('resultado').style.display = 'block';
+  lendo = false;
+
+  document.getElementById('btnIniciar').disabled = false;
+  document.getElementById('btnParar').disabled = true;
+}
+
+function enviarCodigo(codigo) {
+  if (window.opener && !window.opener.closed) {
+    window.opener.postMessage(
+      {
+        tipo: 'PATRIMONIO_LIDO',
+        codigo: codigo
+      },
+      '*'
+    );
+  } else {
     document.getElementById('mensagem').textContent =
-      'Código identificado com sucesso!';
+      'Código lido: ' + codigo +
+      '. Abra o leitor pelo sistema de inventário para enviar automaticamente.';
+  }
+}
 
-    document.getElementById('btnVoltar').style.display = 'block';
+function voltarSistema() {
+  if (window.opener && !window.opener.closed) {
+    window.close();
+  } else {
+    document.getElementById('mensagem').textContent =
+      'Você pode fechar esta aba e retornar ao inventário.';
+  }
+}
 
-    enviarCodigo(codigo);
-    pararCamera();
-  },
-  () => {}
-);
-
-        lendo = true;
-
-        document.getElementById('btnIniciar').disabled = true;
-        document.getElementById('btnParar').disabled = false;
-
-        mensagem.textContent = 'Câmera ativa. Aponte para o código.';
-
-      } catch (erro) {
-        mensagem.textContent =
-          'Não foi possível iniciar a câmera: ' + erro.message;
-
-        console.error(erro);
-      }
-    }
-
-    async function pararCamera() {
-      if (leitor && lendo) {
-        try {
-          await leitor.stop();
-          leitor.clear();
-        } catch (erro) {
-          console.log(erro);
-        }
-      }
-
-      lendo = false;
-
-      document.getElementById('btnIniciar').disabled = false;
-      document.getElementById('btnParar').disabled = true;
-    }
-
-    function enviarCodigo(codigo) {
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage({
-          tipo: 'PATRIMONIO_LIDO',
-          codigo: codigo
-        }, '*');
-      } else {
-        document.getElementById('mensagem').textContent =
-          'Código lido. Abra o leitor pelo sistema de inventário para enviar automaticamente.';
-      }
-    }
-
-    function voltarSistema() {
-      if (window.opener && !window.opener.closed) {
-        window.close();
-      } else {
-        document.getElementById('mensagem').textContent =
-          'Você pode fechar esta aba e retornar ao inventário.';
-      }
-    }
   </script>
 
 </body>
