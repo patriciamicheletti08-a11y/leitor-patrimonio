@@ -173,10 +173,11 @@ await leitor.start(
   camera.id,
   {
     fps: 15,
-    qrbox: {
-      width: 350,
-      height: 150
-    }
+ qrbox: {
+  width: 400,
+  height: 200,
+  type: "barCode"
+}
   },
   codigo => {
     if (codigoEncontrado) return;
